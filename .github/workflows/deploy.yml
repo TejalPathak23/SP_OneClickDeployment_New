@@ -1,0 +1,44 @@
+name: Deploy to Salesforce via SFDX
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Choose Salesforce Environment"
+        required: true
+        default: "Sandbox"
+        type: choice
+        options:
+          - Sandbox
+          - Production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Salesforce CLI
+        run: npm install sfdx-cli --global
+
+      - name: Authenticate to Salesforce (device login)
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
+            echo "Authenticating to Production..."
+            sfdx force:auth:device:login -d -a prod -r https://login.salesforce.com
+          else
+            echo "Authenticating to Sandbox..."
+            sfdx force:auth:device:login -d -a sandbox -r https://test.salesforce.com
+          fi
+
+      - name: Deploy to Salesforce
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
+            echo "Deploying to Production..."
+            sfdx force:source:deploy -p force-app -u prod --testlevel NoTestRun
+          else
+            echo "Deploying to Sandbox..."
+            sfdx force:source:deploy -p force-app -u sandbox --testlevel NoTestRun
+          fi
