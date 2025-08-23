@@ -1,0 +1,7 @@
+# .github/CODEOWNERS
+# Replace with real GitHub usernames or team handles
+
+# Anything under force-app/paper must be reviewed by these 3 approvers
+/force-app/paper/** @dz-tejalp 
+# Anything under force-app/hygiene must be reviewed by these 3 approvers
+/force-app/hygiene/** @dz-tejalp 
