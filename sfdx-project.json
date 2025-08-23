@@ -5,7 +5,7 @@
       "default": true
     }
   ],
-  "name": "Source org 1",
+  "name": "TPOrg",
   "namespace": "",
   "sfdcLoginUrl": "https://login.salesforce.com",
   "sourceApiVersion": "64.0"
