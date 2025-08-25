@@ -1,19 +1,20 @@
-name: Deploy to Salesforce via SFDX
+name: Deploy or Validate to Salesforce via SFDX
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Choose Salesforce Environment"
+        description: "Choose Action: Sandbox, Production, or Validate Only"
         required: true
         default: "Sandbox"
         type: choice
         options:
           - Sandbox
           - Production
+          - Validate Only
 
 jobs:
-  deploy:
+  deploy-or-validate:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,24 +22,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Salesforce CLI
-        run: npm install sfdx-cli --global
+        run: npm install @salesforce/cli --global
 
       - name: Authenticate to Salesforce (device login)
         run: |
           if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
             echo "Authenticating to Production..."
             sfdx force:auth:device:login -d -a prod -r https://login.salesforce.com
-          else
+          elif [ "${{ github.event.inputs.environment }}" == "Sandbox" ]; then
             echo "Authenticating to Sandbox..."
+            sfdx force:auth:device:login -d -a sandbox -r https://test.salesforce.com
+          else
+            echo "Validate Only selected. Authenticating to Sandbox for validation..."
             sfdx force:auth:device:login -d -a sandbox -r https://test.salesforce.com
           fi
 
-      - name: Deploy to Salesforce
+      - name: Perform Action: Validate or Deploy
         run: |
           if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
             echo "Deploying to Production..."
             sfdx force:source:deploy -p force-app -u prod --testlevel NoTestRun
-          else
+          elif [ "${{ github.event.inputs.environment }}" == "Sandbox" ]; then
             echo "Deploying to Sandbox..."
             sfdx force:source:deploy -p force-app -u sandbox --testlevel NoTestRun
+          else
+            echo "Running Validate Only (dry-run) in Sandbox..."
+            sfdx force:source:deploy -p force-app -u sandbox --checkonly --testlevel NoTestRun
           fi
