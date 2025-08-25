@@ -1,4 +1,4 @@
-name: Deploy or Validate to Salesforce via SFDX
+name: Deploy or Validate the project to Salesforce
 
 on:
   workflow_dispatch:
