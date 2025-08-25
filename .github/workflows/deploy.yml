@@ -1,21 +1,22 @@
-name: Deploy or Validate to Salesforce
+name: Salesforce Deploy / Validate Workflow
 
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Choose Action - Sandbox, Production, or Validate Only"
+      action:
+        description: "Choose action to perform"
         required: true
-        default: "Sandbox"
+        default: "Deploy to Sandbox"
         type: choice
         options:
-          - Sandbox
-          - Production
-          - Validate Only
+          - Deploy to Sandbox
+          - Deploy to Production
+          - Validate in Sandbox
+          - Validate in Production
 
 jobs:
-  deploy:
-    name: Salesforce Deployment or Validation
+  deploy-or-validate:
+    name: Salesforce: ${{ github.event.inputs.action }}
     runs-on: ubuntu-latest
 
     steps:
@@ -25,28 +26,28 @@ jobs:
       - name: Install Salesforce CLI
         run: npm install sfdx-cli --global
 
-      - name: Authenticate based on selected environment
+      - name: Authenticate to Salesforce Org
         run: |
-          case "${{ github.event.inputs.environment }}" in
-            "Production")
+          case "${{ github.event.inputs.action }}" in
+            "Deploy to Production"|"Validate in Production")
               echo "Authenticating to Production..."
               sfdx force:auth:device:login -d -a prod -r https://login.salesforce.com
               ;;
-            "Sandbox"|"Validate Only")
+            "Deploy to Sandbox"|"Validate in Sandbox")
               echo "Authenticating to Sandbox..."
               sfdx force:auth:device:login -d -a sandbox -r https://test.salesforce.com
               ;;
           esac
 
-      - name: Run Validate or Deploy
+      - name: Execute Action
         run: |
-          if [[ "${{ github.event.inputs.environment }}" == "Validate Only" ]]; then
-            echo "Validating only (dry-run)..."
-            sfdx force:source:deploy -p force-app -u sandbox --checkonly --testlevel NoTestRun
-          elif [[ "${{ github.event.inputs.environment }}" == "Production" ]]; then
-            echo "Deploying to Production..."
-            sfdx force:source:deploy -p force-app -u prod --testlevel NoTestRun
+          ACTION="${{ github.event.inputs.action }}"
+          USER_ALIAS=$( [[ "$ACTION" =~ Production ]] && echo "prod" || echo "sandbox" )
+
+          if [[ "$ACTION" == "Deploy to Sandbox" || "$ACTION" == "Deploy to Production" ]]; then
+            echo "Deploying to $USER_ALIAS..."
+            sfdx force:source:deploy -p force-app -u "$USER_ALIAS" --testlevel NoTestRun
           else
-            echo "Deploying to Sandbox..."
-            sfdx force:source:deploy -p force-app -u sandbox --testlevel NoTestRun
+            echo "Validating in $USER_ALIAS (check-only)..."
+            sfdx force:source:deploy -p force-app -u "$USER_ALIAS" --checkonly --testlevel NoTestRun
           fi
