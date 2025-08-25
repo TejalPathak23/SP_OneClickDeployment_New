@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Choose action to perform"
+        description: "Choose action"
         required: true
         default: "Deploy to Sandbox"
         type: choice
@@ -15,39 +15,45 @@ on:
           - Validate in Production
 
 jobs:
-  deploy-or-validate:
-    name: Salesforce: ${{ github.event.inputs.action }}
+  operate:
+    name: "${{ github.event.inputs.action }}"
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Salesforce CLI
-        run: npm install sfdx-cli --global
+      # Prefer setup-sfdx for official setup
+      - name: Setup Salesforce CLI
+        uses: sfdx-actions/setup-sfdx@v1
+        # Optional: with sfdx-version or auth here if needed
 
-      - name: Authenticate to Salesforce Org
+      # Fallback: direct download if npm or setup-sfdx fails
+      - name: Fallback Install sfdx
+        if: failure()
+        run: |
+          wget https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
+          mkdir -p sfdx && tar xJf sfdx-linux-x64.tar.xz -C sfdx --strip-components 1
+          echo "PATH=$(pwd)/sfdx/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Authenticate
         run: |
           case "${{ github.event.inputs.action }}" in
-            "Deploy to Production"|"Validate in Production")
-              echo "Authenticating to Production..."
-              sfdx force:auth:device:login -d -a prod -r https://login.salesforce.com
-              ;;
-            "Deploy to Sandbox"|"Validate in Sandbox")
-              echo "Authenticating to Sandbox..."
-              sfdx force:auth:device:login -d -a sandbox -r https://test.salesforce.com
-              ;;
+            *Production*) SFDX_URL=https://login.salesforce.com; ORG=prod ;;
+            *) SFDX_URL=https://test.salesforce.com; ORG=sandbox ;;
           esac
+          echo "Authenticating to $ORG..."
+          sfdx force:auth:device:login -d -a $ORG -r $SFDX_URL
 
       - name: Execute Action
         run: |
           ACTION="${{ github.event.inputs.action }}"
-          USER_ALIAS=$( [[ "$ACTION" =~ Production ]] && echo "prod" || echo "sandbox" )
+          ORG_ALIAS=$( [[ "$ACTION" =~ Production ]] && echo "prod" || echo "sandbox" )
 
-          if [[ "$ACTION" == "Deploy to Sandbox" || "$ACTION" == "Deploy to Production" ]]; then
-            echo "Deploying to $USER_ALIAS..."
-            sfdx force:source:deploy -p force-app -u "$USER_ALIAS" --testlevel NoTestRun
+          if [[ "$ACTION" == Validate* ]]; then
+            echo "Running validation (dry-run) in $ORG_ALIAS"
+            sfdx force:source:deploy -p force-app -u "$ORG_ALIAS" --checkonly --testlevel NoTestRun
           else
-            echo "Validating in $USER_ALIAS (check-only)..."
-            sfdx force:source:deploy -p force-app -u "$USER_ALIAS" --checkonly --testlevel NoTestRun
+            echo "Deploying to $ORG_ALIAS"
+            sfdx force:source:deploy -p force-app -u "$ORG_ALIAS" --testlevel NoTestRun
           fi
