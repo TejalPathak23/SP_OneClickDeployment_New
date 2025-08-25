@@ -23,27 +23,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Prefer setup-sfdx for official setup
-      - name: Setup Salesforce CLI
-        uses: sfdx-actions/setup-sfdx@v1
-        # Optional: with sfdx-version or auth here if needed
-
-      # Fallback: direct download if npm or setup-sfdx fails
-      - name: Fallback Install sfdx
-        if: failure()
+      - name: Install Salesforce CLI
         run: |
-          wget https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
-          mkdir -p sfdx && tar xJf sfdx-linux-x64.tar.xz -C sfdx --strip-components 1
-          echo "PATH=$(pwd)/sfdx/bin:$PATH" >> $GITHUB_ENV
+          echo "Trying npm install..."
+          if npm install sfdx-cli --global; then
+            echo "Installed via npm. sfdx version: $(sfdx --version)"
+          else
+            echo "npm install failed, downloading tarball..."
+            wget -q https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz -O sfdx.tar.xz
+            mkdir sfdx-cli
+            tar xJf sfdx.tar.xz -C sfdx-cli --strip-components 1
+            echo "PATH=$(pwd)/sfdx-cli/bin:$PATH" >> $GITHUB_ENV
+            echo "Installed via download. sfdx version: $(sfdx --version)"
+          fi
 
-      - name: Authenticate
+      - name: Authenticate to Salesforce Org
         run: |
           case "${{ github.event.inputs.action }}" in
-            *Production*) SFDX_URL=https://login.salesforce.com; ORG=prod ;;
-            *) SFDX_URL=https://test.salesforce.com; ORG=sandbox ;;
+            *Production*) ORG_ALIAS=prod; SFDX_URL=https://login.salesforce.com ;;
+            *) ORG_ALIAS=sandbox; SFDX_URL=https://test.salesforce.com ;;
           esac
-          echo "Authenticating to $ORG..."
-          sfdx force:auth:device:login -d -a $ORG -r $SFDX_URL
+          echo "Authenticating to $ORG_ALIAS..."
+          sfdx force:auth:device:login -d -a "$ORG_ALIAS" -r "$SFDX_URL"
 
       - name: Execute Action
         run: |
@@ -51,9 +52,9 @@ jobs:
           ORG_ALIAS=$( [[ "$ACTION" =~ Production ]] && echo "prod" || echo "sandbox" )
 
           if [[ "$ACTION" == Validate* ]]; then
-            echo "Running validation (dry-run) in $ORG_ALIAS"
+            echo "Validating (dry-run) in $ORG_ALIAS..."
             sfdx force:source:deploy -p force-app -u "$ORG_ALIAS" --checkonly --testlevel NoTestRun
           else
-            echo "Deploying to $ORG_ALIAS"
+            echo "Deploying to $ORG_ALIAS..."
             sfdx force:source:deploy -p force-app -u "$ORG_ALIAS" --testlevel NoTestRun
           fi
