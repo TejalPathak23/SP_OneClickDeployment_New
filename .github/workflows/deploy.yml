@@ -37,14 +37,56 @@ jobs:
             echo "Installed via download. sfdx version: $(sfdx --version)"
           fi
 
-      - name: Authenticate to Salesforce Org
+      # -------------------------
+      # PRODUCTION: JWT auth step
+      # -------------------------
+      - name: Authenticate to Production Org (JWT)
+        if: contains(github.event.inputs.action, 'Production')
+        env:
+          SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY_PROD }}
+          SF_JWT_KEY_BASE64: ${{ secrets.SF_JWT_KEY_PROD_BASE64 }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME_PROD }}
         run: |
-          case "${{ github.event.inputs.action }}" in
-            *Production*) ORG_ALIAS=prod; SFDX_URL=https://login.salesforce.com ;;
-            *) ORG_ALIAS=sandbox; SFDX_URL=https://test.salesforce.com ;;
-          esac
-          echo "Authenticating to $ORG_ALIAS..."
-          sfdx force:auth:device:login -d -a "$ORG_ALIAS" -r "$SFDX_URL"
+          echo "Writing JWT key to file..."
+          # If you stored the private key as BASE64 in the secret (recommended):
+          echo "$SF_JWT_KEY_BASE64" | base64 --decode > server.key
+          chmod 600 server.key
+
+          echo "Authenticating to production with JWT..."
+          sfdx force:auth:jwt:grant \
+            --clientid "$SF_CONSUMER_KEY" \
+            --jwtkeyfile server.key \
+            --username "$SF_USERNAME" \
+            --instanceurl https://login.salesforce.com \
+            --setalias prod \
+            --setdefaultusername
+
+          sfdx force:org:display -u prod
+
+      # -------------------------
+      # SANDBOX: JWT auth step
+      # -------------------------
+      - name: Authenticate to Sandbox Org (JWT)
+        if: !contains(github.event.inputs.action, 'Production')
+        env:
+          SF_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY_SANDBOX }}
+          SF_JWT_KEY_BASE64: ${{ secrets.SF_JWT_KEY_SANDBOX_BASE64 }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME_SANDBOX }}
+        run: |
+          echo "Writing JWT key to file..."
+          echo "$SF_JWT_KEY_BASE64" | base64 --decode > server.key
+          chmod 600 server.key
+
+          echo "Authenticating to sandbox with JWT..."
+          sfdx force:auth:jwt:grant \
+            --clientid "$SF_CONSUMER_KEY" \
+            --jwtkeyfile server.key \
+            --username "$SF_USERNAME" \
+            --instanceurl https://test.salesforce.com \
+            --setalias sandbox \
+            --setdefaultusername
+
+          sfdx force:org:display -u sandbox
 
       - name: Execute Action
         run: |
