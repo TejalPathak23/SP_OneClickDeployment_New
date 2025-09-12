@@ -37,14 +37,26 @@ jobs:
             echo "Installed via download. sfdx version: $(sfdx --version)"
           fi
 
-      - name: Authenticate to Salesforce Org
+      - name: Restore SFDX Auth Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.sfdx
+          key: sfdx-auth-${{ github.event.inputs.action }}
+
+      - name: Authenticate to Salesforce Org (if needed)
         run: |
           case "${{ github.event.inputs.action }}" in
             *Production*) ORG_ALIAS=prod; SFDX_URL=https://login.salesforce.com ;;
             *) ORG_ALIAS=sandbox; SFDX_URL=https://test.salesforce.com ;;
           esac
           echo "Authenticating to $ORG_ALIAS..."
-          sfdx force:auth:device:login -d -a "$ORG_ALIAS" -r "$SFDX_URL"
+
+          if sfdx force:org:display -u "$ORG_ALIAS" > /dev/null 2>&1; then
+            echo "Already authenticated."
+          else
+            echo "Running device login (requires device flow enabled in org)..."
+            sfdx force:auth:device:login -d -a "$ORG_ALIAS" -r "$SFDX_URL"
+          fi
 
       - name: Execute Action
         run: |
