@@ -1,72 +1,44 @@
-name: Salesforce Deploy / Validate Workflow
+name: Deploy to Salesforce via SFDX
 
 on:
   workflow_dispatch:
     inputs:
-      action:
-        description: "Choose action"
+      environment:
+        description: "Choose Salesforce Environment"
         required: true
-        default: "Deploy to Sandbox"
+        default: "Sandbox"
         type: choice
         options:
-          - Deploy to Sandbox
-          - Deploy to Production
-          - Validate in Sandbox
-          - Validate in Production
+          - Sandbox
+          - Production
 
 jobs:
-  operate:
-    name: "${{ github.event.inputs.action }}"
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install Salesforce CLI
+        run: npm install sfdx-cli --global
+
+      - name: Authenticate to Salesforce (device login)
         run: |
-          echo "Trying npm install..."
-          if npm install sfdx-cli --global; then
-            echo "Installed via npm. sfdx version: $(sfdx --version)"
+          if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
+            echo "Authenticating to Production..."
+            sfdx force:auth:device:login -d -a prod -r https://login.salesforce.com
           else
-            echo "npm install failed, downloading tarball..."
-            wget -q https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz -O sfdx.tar.xz
-            mkdir sfdx-cli
-            tar xJf sfdx.tar.xz -C sfdx-cli --strip-components 1
-            echo "PATH=$(pwd)/sfdx-cli/bin:$PATH" >> $GITHUB_ENV
-            echo "Installed via download. sfdx version: $(sfdx --version)"
+            echo "Authenticating to Sandbox..."
+            sfdx force:auth:device:login -d -a sandbox -r https://test.salesforce.com
           fi
 
-      - name: Restore SFDX Auth Cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.sfdx
-          key: sfdx-auth-${{ github.event.inputs.action }}
-
-      - name: Authenticate to Salesforce Org (if needed)
+      - name: Deploy to Salesforce
         run: |
-          case "${{ github.event.inputs.action }}" in
-            *Production*) ORG_ALIAS=prod; SFDX_URL=https://login.salesforce.com ;;
-            *) ORG_ALIAS=sandbox; SFDX_URL=https://test.salesforce.com ;;
-          esac
-          echo "Authenticating to $ORG_ALIAS..."
-
-          if sfdx force:org:display -u "$ORG_ALIAS" > /dev/null 2>&1; then
-            echo "Already authenticated."
+          if [ "${{ github.event.inputs.environment }}" == "Production" ]; then
+            echo "Deploying to Production..."
+            sfdx force:source:deploy -p force-app -u prod --testlevel NoTestRun
           else
-            echo "Running device login (requires device flow enabled in org)..."
-            sfdx force:auth:device:login -d -a "$ORG_ALIAS" -r "$SFDX_URL"
-          fi
-
-      - name: Execute Action
-        run: |
-          ACTION="${{ github.event.inputs.action }}"
-          ORG_ALIAS=$( [[ "$ACTION" =~ Production ]] && echo "prod" || echo "sandbox" )
-
-          if [[ "$ACTION" == Validate* ]]; then
-            echo "Validating (dry-run) in $ORG_ALIAS..."
-            sfdx force:source:deploy -p force-app -u "$ORG_ALIAS" --checkonly --testlevel NoTestRun
-          else
-            echo "Deploying to $ORG_ALIAS..."
-            sfdx force:source:deploy -p force-app -u "$ORG_ALIAS" --testlevel NoTestRun
+            echo "Deploying to Sandbox..."
+            sfdx force:source:deploy -p force-app -u sandbox --testlevel NoTestRun
           fi
